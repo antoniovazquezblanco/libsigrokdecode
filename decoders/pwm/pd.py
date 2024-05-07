@@ -20,6 +20,19 @@
 
 import sigrokdecode as srd
 
+'''
+OUTPUT_PYTHON format:
+
+Packet:
+[<period>, <period_t>, <duty>, <duty_t>, <ratio>]
+
+<period> is the pulse period in samples.
+<period_t> is the pulse period in time units.
+<duty> on duty in samples.
+<duty_t> on duty in time units.
+<ratio> is the duty cycle in the range [0-1].
+'''
+
 class SamplerateError(Exception):
     pass
 
@@ -31,7 +44,7 @@ class Decoder(srd.Decoder):
     desc = 'Analog level encoded in duty cycle percentage.'
     license = 'gplv2+'
     inputs = ['logic']
-    outputs = []
+    outputs = ['pwm']
     tags = ['Encoding']
     channels = (
         {'id': 'data', 'name': 'Data', 'desc': 'Data line'},
@@ -64,11 +77,15 @@ class Decoder(srd.Decoder):
             self.samplerate = value
 
     def start(self):
+        self.out_python = self.register(srd.OUTPUT_PYTHON)
         self.out_ann = self.register(srd.OUTPUT_ANN)
         self.out_binary = self.register(srd.OUTPUT_BINARY)
         self.out_average = \
             self.register(srd.OUTPUT_META,
                           meta=(float, 'Average', 'PWM base (cycle) frequency'))
+
+    def putpy(self, data):
+        self.put(self.ss_block, self.es_block, self.out_python, data)
 
     def putx(self, data):
         self.put(self.ss_block, self.es_block, self.out_ann, data)
@@ -133,6 +150,9 @@ class Decoder(srd.Decoder):
             # Report the period in units of time.
             period_t = float(period / self.samplerate)
             self.putp(period_t)
+
+            # Report data to next decoders...
+            self.putpy([period, period_t, duty, float(duty / self.samplerate), ratio])
 
             # Update and report the new duty cycle average.
             num_cycles += 1
